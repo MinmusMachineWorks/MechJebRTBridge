@@ -103,18 +103,21 @@ Follow plan doc §6 and copy the shape of an existing seam:
 - Versioning comes from git tags via MinVer (`v0.1.0` → 0.1.0, with `MinVerTagPrefix=v`).
   Between tags the version is e.g. `0.1.1-alpha.0.N`. Releases are cut by pushing a `v*.*.*`
   tag (`.github/workflows/release.yml`).
-- CI: `build.yml` (every branch push and PR) and `release.yml` (tags) compile against the
-  **CKAN-released** MechJeb2/RemoteTech/Harmony2, not your local install. Code that needs a
-  MechJeb `dev`-only API builds locally but fails CI.
-- The release zip is `MechJebRTBridge-vX.Y.Z/GameData/MechJebRTBridge/…`. `assemble-release`
-  names the zip *and* its wrapper folder from `output-file-name`. The `.ckan` install stanza
-  must stay `"find": "GameData/MechJebRTBridge"`: a bare `MechJebRTBridge` matches a wrapper
-  folder of the same name and installs to `GameData/MechJebRTBridge/GameData/…`.
-- The `.ckan` `download_hash.sha256` must be uppercase hex. CKAN rejects lowercase.
-- `release.yml` runs on `ubuntu-24.04`, not `ubuntu-latest`. `setup-ckan` installs CKAN's
+- CI: `release.yml` runs on every branch push, PR and `v*.*.*` tag. Its `build` job compiles
+  against the **CKAN-released** MechJeb2/RemoteTech/Harmony2, not your local install. Code that
+  needs a MechJeb `dev`-only API builds locally but fails CI. The `release` job calls the shared
+  `MinmusMachineWorks/KSP-Mods-CKAN/.github/workflows/release-mod.yml`, which packages the zip,
+  stamps the `.version` file from the tag, validates the `.ckan`, and on a tag creates the GitHub
+  release and publishes `MechJebRTBridge/MechJebRTBridge-X.Y.Z.ckan` (org secret `CKAN_META_TOKEN`).
+  Fix packaging or publishing bugs there, not here.
+- CKAN metadata lives in `ckan/metadata.json`. The workflow adds `version`, `download`,
+  `download_size`, `download_hash` and `release_date`. Change dependencies there **and** in the
+  `install-dependencies` step of `release.yml`.
+- The release zip has `GameData/MechJebRTBridge/…`, `LICENSE` and `README.md` at its root. The
+  install stanza is `"find": "GameData/MechJebRTBridge"`; the shared workflow fails the build if a
+  `find` target isn't in the zip.
+- The build job runs on `ubuntu-24.04`, not `ubuntu-latest`. `setup-ckan` installs CKAN's
   `.deb`, which depends on `mono-runtime`, and that isn't installable on ubuntu-26.04.
-- The CKAN publish step pushes to `MinmusMachineWorks/KSP-Mods-CKAN` (branch `main`) using the
-  `CKAN_META_TOKEN` secret.
 - Don't set `<Version>` on the `KSPVersionFile` item from `$(MinVer*)` properties. They're
   empty at evaluation time and produce `"VERSION": ".."`. Leave it unset and KSPBuildTools
   fills it from `$(FileVersion)` after MinVer runs.

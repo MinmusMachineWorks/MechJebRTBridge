@@ -2,7 +2,7 @@
 
   <!--
     KSPBuildTools already copies the DLL to $(KSPBT_ModRoot)/$(KSPBT_ModPluginFolder)/
-    (the repo's GameData — what assemble-release zips up).
+    (the repo's GameData — what the release workflow packages).
     This target handles the second copy: the live KSP install for local dev, into
     GameData/<AssemblyName>/Plugins (MechJebRTBridge for the mod, MechJebRTBridge.Tests for
     the test harness).

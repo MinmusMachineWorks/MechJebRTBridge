@@ -105,12 +105,15 @@ The build writes the DLL to the repo's `GameData/MechJebRTBridge/Plugins/` (for 
 when `KSPBT_GameRoot` is set, also copies it into that install's GameData. The version comes
 from the latest git tag (MinVer).
 
-Pushing a `v*.*.*` tag runs the release workflow (`.github/workflows/release.yml`). It builds
-against the CKAN-released MechJeb2, RemoteTech and Harmony2, attaches
-`MechJebRTBridge-vX.Y.Z.zip` and `MechJebRTBridge.version` to a GitHub release, and commits a
-`.ckan` file to the [KSP-Mods-CKAN](https://github.com/MinmusMachineWorks/KSP-Mods-CKAN) meta repo.
-That last step needs the `CKAN_META_TOKEN` repo secret: a token with Contents write access to
-KSP-Mods-CKAN.
+Every push and pull request runs `.github/workflows/release.yml`. It builds against the
+CKAN-released MechJeb2, RemoteTech and Harmony2, packages the zip and validates its `.ckan` against the CKAN schema, and
+uploads both as an artifact (a dry run). Pushing a `v*.*.*` tag does the same, then attaches
+`MechJebRTBridge-vX.Y.Z.zip` and `MechJebRTBridge.version` to a GitHub release and commits
+`MechJebRTBridge/MechJebRTBridge-X.Y.Z.ckan` to the [KSP-Mods-CKAN](https://github.com/MinmusMachineWorks/KSP-Mods-CKAN) meta repo.
+Packaging and publishing are done by that repo's shared `release-mod.yml` workflow. The CKAN
+metadata (everything except the per-release fields) is in `ckan/metadata.json`. The annotated
+tag's message becomes the top of the release notes. Publishing needs the `CKAN_META_TOKEN` org
+secret: a token with Contents write access to KSP-Mods-CKAN.
 
 ## Testing
 
@@ -127,8 +130,8 @@ Via CKAN: add the meta repo with
 `ckan repo add MinmusMachineWorks https://github.com/MinmusMachineWorks/KSP-Mods-CKAN/archive/main.tar.gz`,
 then `ckan install MechJebRTBridge`.
 
-Manually: the release zip holds `MechJebRTBridge-vX.Y.Z/GameData/MechJebRTBridge/`. Copy that
-`GameData/MechJebRTBridge/` into your KSP `GameData/`, so that the DLL ends up at
+Manually: the release zip holds `GameData/MechJebRTBridge/`, plus `LICENSE` and `README.md`. Unzip it
+into your KSP folder so its `GameData/` merges with yours, so that the DLL ends up at
 `GameData/MechJebRTBridge/Plugins/MechJebRTBridge.dll`. Requires MechJeb2, RemoteTech, and
 Harmony (000_Harmony).
 

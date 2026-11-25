@@ -1,0 +1,35 @@
+{
+  "spec_version": "v1.4",
+  "identifier": "MechJebRTBridge",
+  "name": "MechJebRTBridge",
+  "abstract": "Routes MechJeb autopilot commands through RemoteTech's signal-delay queue",
+  "author": [
+    "Machine-Maker"
+  ],
+  "license": "MIT",
+  "ksp_version_min": "1.8",
+  "ksp_version_max": "1.12.5",
+  "depends": [
+    {
+      "name": "MechJeb2"
+    },
+    {
+      "name": "RemoteTech"
+    },
+    {
+      "name": "Harmony2"
+    }
+  ],
+  "install": [
+    {
+      "find": "GameData/MechJebRTBridge",
+      "install_to": "GameData"
+    }
+  ],
+  "release_status": "stable",
+  "resources": {
+    "homepage": "https://github.com/MinmusMachineWorks/MechJebRTBridge",
+    "repository": "https://github.com/MinmusMachineWorks/MechJebRTBridge",
+    "bugtracker": "https://github.com/MinmusMachineWorks/MechJebRTBridge/issues"
+  }
+}

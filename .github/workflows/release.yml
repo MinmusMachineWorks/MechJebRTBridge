@@ -1,24 +1,29 @@
-name: Release
+name: Build & release
+
+# Every push and PR: compile the plugin, package the mod and validate its .ckan
+# (dry run, uploaded as an artifact).
+# A v*.*.* tag: also create the GitHub release and publish the .ckan to KSP-Mods-CKAN.
+# Packaging and publishing live in the shared workflow, MinmusMachineWorks/KSP-Mods-CKAN
+# .github/workflows/release-mod.yml. CKAN metadata is in ckan/metadata.json.
 
 on:
   push:
+    branches: ['**']
     tags: ['v*.*.*']
+  pull_request:
 
 jobs:
-  release:
+  build:
     # Pinned, not ubuntu-latest: CKAN's .deb needs mono-runtime, which ubuntu-26.04 doesn't ship.
     # Matches the image KSPBuildTools' reusable build workflow uses.
     runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-
     steps:
       # fetch-depth 0 so MinVer can walk the full tag history
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # compile action does NOT call setup-dotnet — must do it ourselves
+      # The compile action doesn't set up .NET itself.
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.x'
@@ -29,72 +34,33 @@ jobs:
         with:
           dependency-identifiers: 'MechJeb2 RemoteTech Harmony2'
 
+      # Builds GameData/MechJebRTBridge/Plugins/MechJebRTBridge.dll and GameData/MechJebRTBridge/MechJebRTBridge.version.
       - uses: KSPModdingLibs/KSPBuildTools/.github/actions/compile@1.1.1
 
-      - uses: KSPModdingLibs/KSPBuildTools/.github/actions/assemble-release@1.1.1
-        id: assemble
-        with:
-          # Names both the zip and its top-level folder: MechJebRTBridge-vX.Y.Z/GameData/MechJebRTBridge/
-          output-file-name: 'MechJebRTBridge-${{ github.ref_name }}'
-
-      - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: 'MechJebRTBridge ${{ github.ref_name }}'
-          files: |
-            ${{ steps.assemble.outputs.artifact-zip-path }}
-            GameData/MechJebRTBridge/MechJebRTBridge.version
-          body: |
-            ## Installation
-            Install via CKAN (add the [Minmus Machine Works mods repository](https://github.com/MinmusMachineWorks/KSP-Mods-CKAN)),
-            or copy the zip's `GameData/MechJebRTBridge/` folder into your KSP `GameData/` folder.
-
-            **Dependencies** (CKAN installs these automatically):
-            - MechJeb2
-            - RemoteTech
-            - 000_Harmony
-
-      - name: Publish to CKAN meta repo
-        env:
-          GH_TOKEN: ${{ secrets.CKAN_META_TOKEN }}
+      # Stage GameData/ plus the license and readme, so the release job can extract the
+      # artifact straight into its package directory.
+      - name: Stage package
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          ZIP_PATH="${{ steps.assemble.outputs.artifact-zip-path }}"
-          ZIP_NAME="$(basename "$ZIP_PATH")"
-          # CKAN compares download_hash case-sensitively against uppercase hex; sha256sum prints lowercase
-          SHA256=$(sha256sum "$ZIP_PATH" | cut -d' ' -f1 | tr 'a-f' 'A-F')
-          SIZE=$(stat -c%s "$ZIP_PATH")
+          mkdir -p "$RUNNER_TEMP/build"
+          cp -R GameData LICENSE README.md "$RUNNER_TEMP/build/"
+          find "$RUNNER_TEMP/build" -type f
 
-          git clone https://x-access-token:${GH_TOKEN}@github.com/MinmusMachineWorks/KSP-Mods-CKAN.git /tmp/ckan-meta
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MechJebRTBridge-build
+          path: ${{ runner.temp }}/build
+          if-no-files-found: error
+          retention-days: 7
 
-          cat > "/tmp/ckan-meta/MechJebRTBridge-${VERSION}.ckan" <<EOF
-          {
-            "spec_version": "v1.4",
-            "identifier":   "MechJebRTBridge",
-            "name":         "MechJebRTBridge",
-            "abstract":     "Routes MechJeb autopilot commands through RemoteTech's signal-delay queue",
-            "author":       [ "Machine-Maker" ],
-            "license":      "MIT",
-            "version":      "${VERSION}",
-            "ksp_version_min": "1.8",
-            "ksp_version_max": "1.12.5",
-            "download":      "https://github.com/MinmusMachineWorks/MechJebRTBridge/releases/download/${GITHUB_REF_NAME}/${ZIP_NAME}",
-            "download_size": ${SIZE},
-            "download_hash": { "sha256": "${SHA256}" },
-            "depends": [
-              { "name": "MechJeb2" },
-              { "name": "RemoteTech" },
-              { "name": "Harmony2" }
-            ],
-            "install": [
-              { "find": "GameData/MechJebRTBridge", "install_to": "GameData" }
-            ]
-          }
-          EOF
-
-          cd /tmp/ckan-meta
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "MechJebRTBridge-${VERSION}.ckan"
-          git commit -m "Add MechJebRTBridge ${VERSION}"
-          git push
+  release:
+    needs: build
+    permissions:
+      contents: write
+    uses: MinmusMachineWorks/KSP-Mods-CKAN/.github/workflows/release-mod.yml@main
+    with:
+      # The whole package comes from the build artifact; the checkout has no GameData/.
+      package-dir: package
+      include: GameData LICENSE README.md
+      build-artifact: MechJebRTBridge-build
+      publish: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    secrets: inherit
