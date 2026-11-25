@@ -44,8 +44,8 @@
   <ItemGroup>
     <KSPVersionFile Include=".">
       <Destination>$(KSPBT_ModRoot)MechJebRTBridge.version</Destination>
-      <URL>https://github.com/Machine-Maker/MechJebRTBridge/releases/latest/download/MechJebRTBridge.version</URL>
-      <Download>https://github.com/Machine-Maker/MechJebRTBridge/releases/latest</Download>
+      <URL>https://github.com/MinmusMachineWorks/MechJebRTBridge/releases/latest/download/MechJebRTBridge.version</URL>
+      <Download>https://github.com/MinmusMachineWorks/MechJebRTBridge/releases/latest</Download>
       <KSP_Version>1.12</KSP_Version>
       <KSP_Version_Min>1.8</KSP_Version_Min>
       <KSP_Version_Max>1.12</KSP_Version_Max>

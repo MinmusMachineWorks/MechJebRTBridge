@@ -46,7 +46,7 @@ jobs:
             GameData/MechJebRTBridge/MechJebRTBridge.version
           body: |
             ## Installation
-            Install via CKAN (add the [Machine-Maker mods repository](https://github.com/Machine-Maker/KSP-Mods-CKAN)),
+            Install via CKAN (add the [Minmus Machine Works mods repository](https://github.com/MinmusMachineWorks/KSP-Mods-CKAN)),
             or copy the zip's `GameData/MechJebRTBridge/` folder into your KSP `GameData/` folder.
 
             **Dependencies** (CKAN installs these automatically):
@@ -65,7 +65,7 @@ jobs:
           SHA256=$(sha256sum "$ZIP_PATH" | cut -d' ' -f1 | tr 'a-f' 'A-F')
           SIZE=$(stat -c%s "$ZIP_PATH")
 
-          git clone https://x-access-token:${GH_TOKEN}@github.com/Machine-Maker/KSP-Mods-CKAN.git /tmp/ckan-meta
+          git clone https://x-access-token:${GH_TOKEN}@github.com/MinmusMachineWorks/KSP-Mods-CKAN.git /tmp/ckan-meta
 
           cat > "/tmp/ckan-meta/MechJebRTBridge-${VERSION}.ckan" <<EOF
           {
@@ -78,7 +78,7 @@ jobs:
             "version":      "${VERSION}",
             "ksp_version_min": "1.8",
             "ksp_version_max": "1.12.5",
-            "download":      "https://github.com/Machine-Maker/MechJebRTBridge/releases/download/${GITHUB_REF_NAME}/${ZIP_NAME}",
+            "download":      "https://github.com/MinmusMachineWorks/MechJebRTBridge/releases/download/${GITHUB_REF_NAME}/${ZIP_NAME}",
             "download_size": ${SIZE},
             "download_hash": { "sha256": "${SHA256}" },
             "depends": [

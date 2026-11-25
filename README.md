@@ -108,7 +108,7 @@ from the latest git tag (MinVer).
 Pushing a `v*.*.*` tag runs the release workflow (`.github/workflows/release.yml`). It builds
 against the CKAN-released MechJeb2, RemoteTech and Harmony2, attaches
 `MechJebRTBridge-vX.Y.Z.zip` and `MechJebRTBridge.version` to a GitHub release, and commits a
-`.ckan` file to the [KSP-Mods-CKAN](https://github.com/Machine-Maker/KSP-Mods-CKAN) meta repo.
+`.ckan` file to the [KSP-Mods-CKAN](https://github.com/MinmusMachineWorks/KSP-Mods-CKAN) meta repo.
 That last step needs the `CKAN_META_TOKEN` repo secret: a token with Contents write access to
 KSP-Mods-CKAN.
 
@@ -124,7 +124,7 @@ manual.
 ## Install
 
 Via CKAN: add the meta repo with
-`ckan repo add Machine-Maker-Mods https://github.com/Machine-Maker/KSP-Mods-CKAN/archive/main.tar.gz`,
+`ckan repo add MinmusMachineWorks https://github.com/MinmusMachineWorks/KSP-Mods-CKAN/archive/main.tar.gz`,
 then `ckan install MechJebRTBridge`.
 
 Manually: the release zip holds `MechJebRTBridge-vX.Y.Z/GameData/MechJebRTBridge/`. Copy that
