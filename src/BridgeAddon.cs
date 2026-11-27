@@ -59,9 +59,11 @@ namespace MechJebRTBridge
             // RemoteTech's delayed action group. MechJeb KSPActions (SmartASS modes, land
             // somewhere, PANIC, …) bound to an action group fire from inside this Pop, after RT
             // has already applied the signal delay. Without the bypass the bridge would queue
-            // them a second time (2× delay).
-            Patch(harmony, "RemoteTech.FlightComputer.Commands.ActionGroupCommand:Pop",
-                  prefix: bypassPrefix, finalizer: bypassFinalizer);
+            // them a second time (2× delay). Only with RemoteTech installed; LightLag's queue
+            // says when it runs a command instead (BridgeCore.IsPlayerCommand).
+            if (AccessTools.TypeByName("RemoteTech.FlightComputer.Commands.ActionGroupCommand") != null)
+                Patch(harmony, "RemoteTech.FlightComputer.Commands.ActionGroupCommand:Pop",
+                      prefix: bypassPrefix, finalizer: bypassFinalizer);
 
             // Generic seam: autopilots engaged/disengaged via their Users pool (UserPoolBridge
             // allowlist: Rendezvous, Docking, Ascent). Declared-method lookup with exact parameters,
@@ -94,7 +96,7 @@ namespace MechJebRTBridge
                      })
                 Patch(harmony, stop, prefix: bypassPrefix, finalizer: bypassFinalizer);
 
-            Debug.Log("[MJ-RT Bridge] Initialised.");
+            Debug.Log($"[MJ-RT Bridge] Initialised; delay backend {DelayBackend.Current?.Name ?? "none"}.");
         }
 
         private static HarmonyMethod H(Type t, string methodName) =>

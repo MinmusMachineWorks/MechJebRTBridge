@@ -1,8 +1,8 @@
 {
-  "spec_version": "v1.4",
+  "spec_version": "v1.26",
   "identifier": "MechJebRTBridge",
   "name": "MechJebRTBridge",
-  "abstract": "Routes MechJeb autopilot commands through RemoteTech's signal-delay queue",
+  "abstract": "Routes MechJeb autopilot commands through RemoteTech's or LightLag's signal-delay queue",
   "author": [
     "Machine-Maker"
   ],
@@ -14,7 +14,14 @@
       "name": "MechJeb2"
     },
     {
-      "name": "RemoteTech"
+      "any_of": [
+        {
+          "name": "RemoteTech"
+        },
+        {
+          "name": "LightLag"
+        }
+      ]
     },
     {
       "name": "Harmony2"

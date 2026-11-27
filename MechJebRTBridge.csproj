@@ -19,17 +19,14 @@
     <PackageReference Include="KSPBuildTools" Version="1.1.1" />
   </ItemGroup>
 
-  <!-- Hard dependencies — the bridge is useless without both mods installed.
-       CKANIdentifier drives `ckan install` in CI via setup-ckan + install-dependencies.
+  <!-- Build-time references: MechJeb and Harmony. The delay mod (RemoteTech or LightLag) isn't
+       referenced: src/Backends finds whichever is installed by reflection, so one DLL works
+       with either. CKANIdentifier drives `ckan install` in CI via setup-ckan + install-dependencies.
        Locally, set KSPBT_InstallCKANDependencies=false (see Directory.Build.props.user). -->
   <ItemGroup>
     <ModReference Include="MechJeb2">
       <DLLPath>GameData/MechJeb2/Plugins/MechJeb2.dll</DLLPath>
       <CKANIdentifier>MechJeb2</CKANIdentifier>
-    </ModReference>
-    <ModReference Include="RemoteTech">
-      <DLLPath>GameData/RemoteTech/Plugins/RemoteTech.dll</DLLPath>
-      <CKANIdentifier>RemoteTech</CKANIdentifier>
     </ModReference>
     <ModReference Include="0Harmony">
       <DLLPath>GameData/000_Harmony/0Harmony.dll</DLLPath>

@@ -16,6 +16,9 @@ It uses the same `Directory.Build.props.user` as the mod. The DLL goes to
 `KSPBT_GameRoot` is set, it's also copied to `<KSP>/GameData/MechJebRTBridge.Tests/Plugins/`.
 Delete that folder from the install to remove the harness.
 
+**RemoteTech only.** The harness drives RemoteTech's queue, extra delay and radio blackout, so it
+runs with RemoteTech installed. The bridge's LightLag backend isn't covered by it yet.
+
 The harness doesn't reference the bridge. It only uses what the player and RemoteTech can see:
 - it calls MechJeb's methods the way a button click or an autopilot would
 - it reads RemoteTech's flight-computer queue and MechJeb's module state

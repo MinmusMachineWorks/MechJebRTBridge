@@ -32,7 +32,7 @@ jobs:
 
       - uses: KSPModdingLibs/KSPBuildTools/.github/actions/install-dependencies@1.1.1
         with:
-          dependency-identifiers: 'MechJeb2 RemoteTech Harmony2'
+          dependency-identifiers: 'MechJeb2 Harmony2'
 
       # Builds GameData/MechJebRTBridge/Plugins/MechJebRTBridge.dll and GameData/MechJebRTBridge/MechJebRTBridge.version.
       - uses: KSPModdingLibs/KSPBuildTools/.github/actions/compile@1.1.1

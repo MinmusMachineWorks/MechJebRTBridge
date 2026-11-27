@@ -5,15 +5,16 @@ Instructions for AI coding agents (and humans) working in this repo.
 ## What this project is
 
 **MechJebRTBridge** is a standalone KSP 1.12 compatibility mod. It makes **MechJeb2** obey
-**RemoteTech** signal delay. Normally, clicking a MechJeb button on a probe that's light-minutes
-away takes effect instantly, which defeats the point of RemoteTech. The bridge intercepts each
-MechJeb *command* (engage SmartASS, execute node, land, …) and routes it through RemoteTech's
-flight-computer queue, so it only takes effect after the signal delay. The program that command
+signal delay from **RemoteTech** or **LightLag**, whichever is installed. Normally, clicking a MechJeb button on a probe that's light-minutes
+away takes effect instantly, which defeats the point of signal delay. The bridge intercepts each
+MechJeb *command* (engage SmartASS, execute node, land, …) and routes it through the delay mod's
+command queue, so it only takes effect after the signal delay. The program that command
 starts (the attitude hold, the burn, the descent) then runs locally on the vessel in real time,
 as if MechJeb were an on-board computer.
 
-Neither MechJeb2 nor RemoteTech is modified. Interception is done with Harmony prefixes, and the
-delay with RemoteTech's public `RemoteTech.API`.
+Neither MechJeb2 nor the delay mods are modified. Interception is done with Harmony prefixes, and
+the delay through `DelayBackend` (`src/Backends/`): RemoteTech's public `RemoteTech.API` or
+LightLag's `LightLagAPI`, both reached by reflection, so neither is a build reference.
 
 Read these before changing anything:
 - `README.md` — user-facing overview, build, install, limitations.
@@ -52,8 +53,9 @@ Also:
 
 ```
 src/BridgeAddon.cs          bootstrap: applies every Harmony patch, each isolated in try/catch
-src/BridgeCore.cs           shared plumbing: Bypass guard, RT helpers, module resolution,
-                            command-node builder, RT queue check, InFlightSet<T>
+src/BridgeCore.cs           shared plumbing: Bypass guard, delay helpers (through DelayBackend),
+                            module resolution, command-node builder, queue check, InFlightSet<T>
+src/Backends/               DelayBackend (picks the installed mod), RemoteTechBackend, LightLagBackend
 src/SmartAssBridge.cs       seam: SmartASS Engage + UI highlight hold + sanctioned-pilot hold
 src/NodeExecutorBridge.cs   seam: ExecuteOneNode / ExecuteAllNodes
 src/LandingBridge.cs        seam: LandAtPositionTarget / LandUntargeted
@@ -69,6 +71,8 @@ Sibling checkouts (reference only, not modified by this repo):
 - `../MechJeb2` — MechJeb source (`dev`). Use it to find and verify the methods being patched.
 - `../RemoteTech` — RemoteTech source (`develop`). Note that the game runs the **released**
   RemoteTech 1.9.x DLL, which may differ from `develop`.
+- `../LightLag` — LightLag, the user's own delay mod. Its public API is `LightLagAPI`
+  (`docs/DESIGN.md` §4 there); the LightLag backend depends on it.
 
 ## Adding a seam
 
@@ -78,7 +82,8 @@ Follow plan doc §6 and copy the shape of an existing seam:
    outside the physics step needs a Bypass wrapper in `BridgeAddon` (see plan doc §10).
 2. Stash the intent by token **and** serialize enough into the command node to rebuild it after
    a reload.
-3. `public static bool RtPop(ConfigNode)` (it must be public: RemoteTech calls it by reflection).
+3. `public static bool RtPop(ConfigNode)` (it must be public: the delay mod calls it by reflection).
+   Queue with `BridgeCore.Queue`, never a delay mod's API directly.
    Re-invoke the real method inside `Bypass = true` / `finally Bypass = false`, then return `false`.
 4. Register it in `BridgeAddon.Start()`.
 5. Add a click test and an on-board test to the harness (`tests/README.md`, "Adding a test").
@@ -104,7 +109,7 @@ Follow plan doc §6 and copy the shape of an existing seam:
   Between tags the version is e.g. `0.1.1-alpha.0.N`. Releases are cut by pushing a `v*.*.*`
   tag (`.github/workflows/release.yml`).
 - CI: `release.yml` runs on every branch push, PR and `v*.*.*` tag. Its `build` job compiles
-  against the **CKAN-released** MechJeb2/RemoteTech/Harmony2, not your local install. Code that
+  against the **CKAN-released** MechJeb2/Harmony2, not your local install. Code that
   needs a MechJeb `dev`-only API builds locally but fails CI. The `release` job calls the shared
   `MinmusMachineWorks/KSP-Mods-CKAN/.github/workflows/release-mod.yml`, which packages the zip,
   stamps the `.version` file from the tag, validates the `.ckan`, and on a tag creates the GitHub

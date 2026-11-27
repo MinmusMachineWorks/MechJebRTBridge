@@ -1,9 +1,12 @@
 # MechJeb ⇄ RemoteTech Bridge
 
-A standalone KSP compatibility mod that routes **MechJeb autopilot commands** through
-**RemoteTech's signal-delay queue**, so issuing a command to a distant vessel takes the
-correct light-speed time to arrive — while the resulting control loop still runs locally
-and instantly on the vessel.
+A standalone KSP compatibility mod that routes **MechJeb autopilot commands** through a
+signal-delay queue, **RemoteTech's or LightLag's**, so issuing a command to a distant vessel
+takes the correct light-speed time to arrive — while the resulting control loop still runs
+locally and instantly on the vessel.
+
+It works with whichever of the two is installed (they conflict, so never both). The name
+predates LightLag support.
 
 ## Why
 
@@ -38,8 +41,14 @@ Everything else in MechJeb still acts instantly. The full per-feature status is 
 Neither MechJeb2 nor RemoteTech is modified. This is a separate assembly that **hard-
 depends on both** (a compatibility shim is pointless without them):
 
-- **RemoteTech** is used through its public `RemoteTech.API` class
-  (`IsRemoteTechEnabled`, `HasLocalControl`, `QueueCommandToFlightComputer`).
+- **The delay mod** is found at load time, by reflection, so neither is a build-time reference
+  and one DLL works with either (`src/Backends/`):
+  - **RemoteTech** through its public `RemoteTech.API` class (`IsRemoteTechEnabled`,
+    `HasLocalControl`, `GetShortestSignalDelay`, `QueueCommandToFlightComputer`,
+    `AddSanctionedPilot`), plus its flight computer's queue to notice cancelled commands.
+  - **LightLag** through `LightLag.LightLagAPI` (`Applies`, `IsConnected`, `GetDelay`,
+    `QueueCommand`, `IsQueued`, `IsRunningCommand`).
+  Both take the same command node (RemoteTech's keys) and call the same `RtPop` back.
 - **MechJeb** is intercepted with **Harmony**, because it exposes no event to hook — we
   prefix-patch the internal `MechJebModuleSmartASS.Engage`.
 
@@ -80,8 +89,9 @@ cut without a connection.
 
 ## Building
 
-Requires a local KSP install with **MechJeb2, RemoteTech, and Harmony (`000_Harmony`)
-installed in `GameData`**. These provide the reference assemblies, resolved through
+Requires a local KSP install with **MechJeb2 and Harmony (`000_Harmony`) installed in
+`GameData`**. RemoteTech and LightLag aren't build references (the harness still needs RemoteTech,
+see *Testing*). These provide the reference assemblies, resolved through
 [KSPBuildTools](https://github.com/KSPModdingLibs/KSPBuildTools) `ModReference` items. You also
 need `dotnet` (or Mono's `msbuild`).
 
@@ -106,7 +116,7 @@ when `KSPBT_GameRoot` is set, also copies it into that install's GameData. The v
 from the latest git tag (MinVer).
 
 Every push and pull request runs `.github/workflows/release.yml`. It builds against the
-CKAN-released MechJeb2, RemoteTech and Harmony2, packages the zip and validates its `.ckan` against the CKAN schema, and
+CKAN-released MechJeb2 and Harmony2, packages the zip and validates its `.ckan` against the CKAN schema, and
 uploads both as an artifact (a dry run). Pushing a `v*.*.*` tag does the same, then attaches
 `MechJebRTBridge-vX.Y.Z.zip` and `MechJebRTBridge.version` to a GitHub release and commits
 `MechJebRTBridge/MechJebRTBridge-X.Y.Z.ckan` to the [KSP-Mods-CKAN](https://github.com/MinmusMachineWorks/KSP-Mods-CKAN) meta repo.
@@ -132,8 +142,9 @@ then `ckan install MechJebRTBridge`.
 
 Manually: the release zip holds `GameData/MechJebRTBridge/`, plus `LICENSE` and `README.md`. Unzip it
 into your KSP folder so its `GameData/` merges with yours, so that the DLL ends up at
-`GameData/MechJebRTBridge/Plugins/MechJebRTBridge.dll`. Requires MechJeb2, RemoteTech, and
-Harmony (000_Harmony).
+`GameData/MechJebRTBridge/Plugins/MechJebRTBridge.dll`. Requires MechJeb2, Harmony
+(000_Harmony), and RemoteTech or LightLag. LightLag is in the same Minmus Machine Works CKAN
+repository. With neither installed, the bridge loads and delays nothing.
 
 ## Known limitations
 
@@ -142,7 +153,7 @@ Harmony (000_Harmony).
   On MechJeb dev, Ascent's Engage starts a timed launch's countdown at the click; only the
   autopilot engage waits for the signal.
 - MechJeb part actions bound to an action group (SmartASS modes, land somewhere, PANIC, …) are
-  delayed once, by RemoteTech's action-group delay. The bridge doesn't add a second delay.
+  delayed once, by the delay mod's action-group delay. The bridge doesn't add a second delay.
 - Only player clicks are delayed. MechJeb's own internal calls (an autopilot starting its node
   burns, Hoverslam engaging SmartASS, PANIC, restoring SmartASS on load) and kOS scripts run
   locally.
@@ -159,4 +170,10 @@ Harmony (000_Harmony).
 - **Signal-loss policy** (should a running local program keep flying, or cut out?) is not yet
   wired to `MechJebCore.DeactivateControl`. Currently only *new* commands are delayed.
 - **Telemetry is not delayed** — the MechJeb UI still shows live vessel state. Out of scope.
-- Commands are only accepted for the **active vessel** (a RemoteTech API constraint).
+- Commands are only accepted for the **active vessel** (a RemoteTech API constraint; LightLag
+  needs a loaded vessel, and the seams only act on the active one).
+- **Signal loss differs between the two.** RemoteTech wipes the controls without a link; the
+  bridge then keeps SmartASS's attitude hold flying (a sanctioned pilot) but not the throttle.
+  LightLag doesn't touch an autopilot's output, so a running MechJeb program keeps full control,
+  throttle included, as an on-board computer would. Not yet checked in game with LightLag.
+- **LightLag support isn't checked in game yet,** and the test harness covers RemoteTech only.

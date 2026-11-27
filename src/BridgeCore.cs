@@ -1,17 +1,13 @@
 using System;
 using System.Collections.Generic;
-using HarmonyLib;
 using MuMech;
-using RemoteTech;
-using RemoteTech.FlightComputer.Commands;
-using RemoteTech.API;
 using UnityEngine;
 
 namespace MechJebRTBridge
 {
     /// <summary>
     /// Shared plumbing for all command-delay seams. Each seam (SmartAssBridge, LandingBridge,
-    /// etc.) is its own public static class (required by Harmony and RemoteTech reflection),
+    /// etc.) is its own public static class (required by Harmony and by the delay mod's reflection),
     /// but calls into here for everything that isn't seam-specific.
     /// </summary>
     internal static class BridgeCore
@@ -36,9 +32,18 @@ namespace MechJebRTBridge
         // events in Update on MechJeb dev. So "inside FixedUpdate" = internal. This is more robust
         // than checking the `controller` argument, which is a DisplayModule for Translatron in
         // 2.15.4 and doesn't exist on SmartASS.Engage.
+        //
+        // A command the delay mod runs on board (an action group bound to a MechJeb action) also
+        // isn't the player's: LightLag runs them in the physics step and says so
+        // (DelayBackend.RunningCommand); RemoteTech's ActionGroupCommand.Pop is wrapped in Bypass.
         internal static bool IsPlayerCommand(string what)
         {
             if (Bypass) return false;
+            if (DelayBackend.Current?.RunningCommand ?? false)
+            {
+                Debug.Log($"[MJ-RT Bridge] {what}: run by {DelayBackend.Current.Name}'s queue, not delayed");
+                return false;
+            }
             if (Time.inFixedTimeStep)
             {
                 Debug.Log($"[MJ-RT Bridge] {what}: internal call (physics step), not delayed");
@@ -61,66 +66,39 @@ namespace MechJebRTBridge
             return __exception;
         }
 
-        // ---- RT connection helpers ------------------------------------------
+        // ---- delay helpers (through DelayBackend.Current) ---------------------
 
-        // True when delay is a real, finite, sane value (RemoteTech has a route and will
-        // accept QueueCommandToFlightComputer). Infinity/NaN/absurd values mean no connection.
+        // True when delay is a real, finite, sane value (the delay mod has a route and will
+        // accept the command). Infinity/NaN/absurd values mean no connection.
         internal static bool IsConnected(double delay) =>
             !double.IsNaN(delay) && !double.IsInfinity(delay) && delay >= 0.0 && delay < 1.0e6;
 
         internal static double SafeDelay(Guid id)
         {
-            try { return API.GetShortestSignalDelay(id); }
+            try { return DelayBackend.Current?.Delay(id) ?? 0.0; }
             catch { return double.PositiveInfinity; }
         }
 
-        // True when this command should be delayed: RT is active AND the vessel lacks local
-        // control. Callers still need to check IsConnected(SafeDelay(...)) before queuing,
-        // because no connection is a different condition (command refused, not just delayed).
-        internal static bool NeedsDelay(Vessel vessel) =>
-            API.IsRemoteTechEnabled() && !API.HasLocalControl(vessel.id);
+        // True when this command should be delayed: a delay mod is installed and delays commands
+        // to this vessel (RemoteTech: enabled and no local control; LightLag: LightLagAPI.Applies).
+        // Callers still need to check IsConnected(SafeDelay(...)) before queuing, because no
+        // connection is a different condition (command refused, not just delayed).
+        internal static bool NeedsDelay(Vessel vessel)
+        {
+            DelayBackend backend = DelayBackend.Current;
+            return backend != null && backend.NeedsDelay(vessel);
+        }
 
-        // ---- RT queue inspection -------------------------------------------
-        // RemoteTech can drop a queued command without telling the bridge (see InFlightSet), so
-        // in-flight state is checked against the flight computer's live queue. The command's
-        // ConfigNode (with our Token) sits in ExternalAPICommand's private `externalData`.
-
-        private static AccessTools.FieldRef<ExternalAPICommand, ConfigNode> _externalData;
-        private static bool _queueInspectionBroken;
+        /// <summary>Queues a seam's command with the delay mod; false if it refused.</summary>
+        internal static bool Queue(Guid vesselId, string token, ConfigNode node) =>
+            DelayBackend.Current?.Queue(vesselId, token, node) ?? false;
 
         /// <summary>
-        /// True if the vessel's RT queue holds a command with this token. Errs towards true when it
-        /// can't tell (no RTCore, or this RT version's internals differ), so the entry then lasts
-        /// until RtPop.
+        /// True if the delay mod still holds the command with this token. The delay mod can drop
+        /// one without telling the bridge (see InFlightSet). Errs towards true when it can't tell.
         /// </summary>
-        internal static bool IsQueued(Guid vesselId, string token)
-        {
-            if (_queueInspectionBroken || RTCore.Instance == null) return true;
-            if (_externalData == null)
-            {
-                try { _externalData = AccessTools.FieldRefAccess<ExternalAPICommand, ConfigNode>("externalData"); }
-                catch (Exception e)
-                {
-                    _queueInspectionBroken = true;
-                    Debug.LogError("[MJ-RT Bridge] can't inspect the RemoteTech queue; a command RT cancels or " +
-                                   "drops will keep blocking its button: " + e.Message);
-                    return true;
-                }
-            }
-            try
-            {
-                VesselSatellite sat = RTCore.Instance.Satellites[vesselId];
-                if (sat == null) return false; // vessel gone
-                foreach (ICommand c in sat.FlightComputer.QueuedCommands)
-                    if (c is ExternalAPICommand ext && GetValueDeep(_externalData(ext), "Token") == token)
-                        return true;
-                return false;
-            }
-            catch (Exception)
-            {
-                return true; // satellite has no flight computer / signal processor yet: can't tell
-            }
-        }
+        internal static bool IsQueued(Guid vesselId, string token) =>
+            DelayBackend.Current?.IsQueued(vesselId, token) ?? false;
 
         // ---- module resolution ---------------------------------------------
         // Each seam caches the MechJeb module instance in its Pending object. After a
@@ -173,7 +151,8 @@ namespace MechJebRTBridge
 
         // ---- ConfigNode utilities ------------------------------------------
         // RemoteTech wraps our node under an ExternalData/MJRT subnode before handing it
-        // back, so search one level deep rather than assuming the key is at the root.
+        // back (LightLag hands back the node itself), so search one level deep rather than
+        // assuming the key is at the root.
         internal static string GetValueDeep(ConfigNode node, string key)
         {
             if (node == null) return null;
@@ -199,7 +178,7 @@ namespace MechJebRTBridge
                 double delayNow = v != null ? SafeDelay(v.id) : double.NaN;
                 bool onRails = TimeWarp.WarpMode == TimeWarp.Modes.HIGH && TimeWarp.CurrentRate > 1f;
                 return $"warp={TimeWarp.CurrentRate:F0}x({TimeWarp.WarpMode}) onRails={onRails} " +
-                       $"connectedNow={IsConnected(delayNow)} localCtrl={v != null && API.HasLocalControl(v.id)} " +
+                       $"connectedNow={IsConnected(delayNow)} delayed={v != null && NeedsDelay(v)} " +
                        $"delayNow={delayNow:F1}";
             }
             catch (Exception e) { return "state?(" + e.Message + ")"; }
@@ -207,15 +186,16 @@ namespace MechJebRTBridge
     }
 
     /// <summary>
-    /// Commands a seam has put in the RT queue and not yet seen arrive, grouped by key (a module
+    /// Commands a seam has put in the delay queue and not yet seen arrive, grouped by key (a module
     /// instance, or a module + action). Used to freeze the SmartASS highlight while a command is
     /// travelling and to de-duplicate the UserPool seam's per-frame re-clicks.
     ///
-    /// An entry ends when RtPop calls <see cref="Remove"/>, or when RemoteTech no longer holds the
-    /// command. RT can drop a queued command without calling the bridge: the queue window's
-    /// cancel ("x"), a command coming due while the vessel is unpowered, hibernation. So
+    /// An entry ends when RtPop calls <see cref="Remove"/>, or when the delay mod no longer holds
+    /// the command. It can drop a queued command without calling the bridge: RemoteTech's queue
+    /// window cancel ("x"), a command coming due while the vessel is unpowered, hibernation, or
+    /// LightLag's Abort. So
     /// <see cref="Has"/> checks each entry against the live queue (<see cref="BridgeCore.IsQueued"/>)
-    /// and forgets the ones RT no longer has, calling <c>onDropped</c> with their tokens.
+    /// and forgets the ones the delay mod no longer has, calling <c>onDropped</c> with their tokens.
     /// </summary>
     internal sealed class InFlightSet<TKey>
     {
@@ -252,7 +232,7 @@ namespace MechJebRTBridge
             if (found) _dict.Remove(emptied);
         }
 
-        /// <summary>True if a command for <paramref name="key"/> is still in RemoteTech's queue.</summary>
+        /// <summary>True if a command for <paramref name="key"/> is still in the delay mod's queue.</summary>
         internal bool Has(TKey key)
         {
             if (!_dict.TryGetValue(key, out List<Entry> list)) return false;
@@ -261,8 +241,8 @@ namespace MechJebRTBridge
                 Entry e = list[i];
                 if (BridgeCore.IsQueued(e.VesselId, e.Token)) continue;
                 list.RemoveAt(i);
-                Debug.Log($"[MJ-RT Bridge] command token={BridgeCore.Short(e.Token)} is no longer in the RT queue " +
-                          "(cancelled or dropped by RemoteTech); forgetting it");
+                Debug.Log($"[MJ-RT Bridge] command token={BridgeCore.Short(e.Token)} is no longer in the {DelayBackend.Current?.Name} queue " +
+                          "(cancelled or dropped); forgetting it");
                 _onDropped?.Invoke(e.Token);
             }
             if (list.Count > 0) return true;

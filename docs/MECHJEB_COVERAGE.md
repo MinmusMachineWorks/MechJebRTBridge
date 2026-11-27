@@ -14,6 +14,10 @@ Sources:
 
 Line numbers are against `dev` unless marked *2.15.4*.
 
+The matrix is written against RemoteTech. With LightLag as the delay mod (`src/Backends/`), the
+seams are the same; LightLag delays the same kinds of hand action (steering and throttle,
+staging, action groups, SAS, part menus; see LightLag's `docs/COVERAGE.md`).
+
 ---
 
 ## 1. The rule this table applies

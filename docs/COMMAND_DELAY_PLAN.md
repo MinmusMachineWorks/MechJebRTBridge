@@ -63,8 +63,20 @@ Command node contract (see `BuildCommandNode`): `GUIDString`, `Executor`, `Refle
 (assembly-qualified), `ReflectionPopMethod`, labels, plus our own `Token`. One-shot commands
 do their work in the Pop method and return `false` (no Execute method → not kept active).
 
-Dependencies: **hard** references to MechJeb2 + RemoteTech (a shim is pointless without
-both); **Harmony** for interception (MechJeb exposes no events). Target `net48`.
+**Delay backends (`src/Backends/`).** The queue isn't RemoteTech's alone: `DelayBackend.Current`
+is RemoteTech's backend if `RemoteTech.API.API` is loaded, else LightLag's if `LightLag.LightLagAPI`
+is, else none (nothing is delayed). Both are reached by reflection with cached delegates, so
+neither mod is a build reference and one DLL works with either. They take the same node and call
+the same `RtPop`:
+- **RemoteTech:** `NeedsDelay` = enabled and no local control; `Queue` =
+  `QueueCommandToFlightComputer`; `IsQueued` reads the flight computer's queue for the token;
+  `HoldAttitude` adds the sanctioned pilot.
+- **LightLag:** `NeedsDelay` = `LightLagAPI.Applies`; `Delay` = +Infinity unless `IsConnected`;
+  `Queue` = `QueueCommand`, keeping token → command id for `IsQueued`; `RunningCommand` =
+  `IsRunningCommand`; no attitude hold (LightLag doesn't wipe the controls).
+
+Dependencies: a hard reference to MechJeb2 (the bridge patches it); **Harmony** for interception
+(MechJeb exposes no events). Target `net48`.
 
 ---
 
@@ -173,7 +185,11 @@ A running program's parameter changes are **new delayed commands**, not free loc
 - **Telemetry is not delayed (out of scope).** The MechJeb UI shows live vessel state; a
   strict model would delay displayed readouts by one-way light time. Large change; deferred.
 - **Active vessel only.** `QueueCommandToFlightComputer` accepts commands only for the active
-  vessel (a RemoteTech API constraint) — fine for player-driven UI.
+  vessel (a RemoteTech API constraint); LightLag's `QueueCommand` needs a loaded one — fine for
+  player-driven UI.
+- **Signal loss under LightLag.** LightLag leaves an autopilot's `OnFlyByWire` output alone, so
+  a running MechJeb program keeps attitude *and* throttle without a link, unlike under
+  RemoteTech (§10). That fits the on-board-computer model; not yet checked in game.
 - **Version coupling.** Harmony patches MechJeb internals; a signature change surfaces as a
   load/JIT failure and needs a bridge recompile. Keep a guard/log per patch.
 
@@ -233,7 +249,15 @@ A running program's parameter changes are **new delayed commands**, not free loc
   callbacks therefore stops when its window closes. Hook `MechJebCore.FixedUpdate` instead. See
   `MECHJEB_COVERAGE.md` §5.5.
 - `RtPop` must be `public static bool RtPop(ConfigNode)`; RemoteTech invokes it by reflection
-  via `Type.GetType(AssemblyQualifiedName)` — keep the type public.
+  via `Type.GetType(AssemblyQualifiedName)` — keep the type public. LightLag calls the same
+  method the same way and ignores the result.
+- **LightLag runs its queued commands in the physics step** (`CommandQueue.Process`, from
+  `LightLagVessel.FixedUpdate`), with `LightLagAPI.IsRunningCommand` true. So an action group
+  bound to a MechJeb action is already an on-board call to `IsPlayerCommand`; it also checks
+  `DelayBackend.RunningCommand`. LightLag doesn't hook MechJeb's IMGUI windows, so a MechJeb
+  click is delayed only by the bridge; a MechJeb part-menu button (the Ascent AP toggle) is
+  delayed by LightLag's part-menu hook and runs on board, so the bridge lets it through.
+- **LightLag hands back the node itself**, not wrapped in `ExternalData`; `GetValueDeep` reads both.
 - RemoteTech wraps the queued node under an `ExternalData`/`MJRT` subnode before handing it
   back; read values with a shallow recursive lookup (`GetValueDeep`).
 - One-shot = provide only `ReflectionPopMethod`, do the work there, return `false`.

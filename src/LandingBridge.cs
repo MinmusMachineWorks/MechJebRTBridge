@@ -1,13 +1,12 @@
 using System;
 using System.Collections.Generic;
 using MuMech;
-using RemoteTech.API;
 using UnityEngine;
 
 namespace MechJebRTBridge
 {
     /// <summary>
-    /// Route MechJeb's landing autopilot commands through RemoteTech's signal-delay queue.
+    /// Route MechJeb's landing autopilot commands through the signal-delay queue (RemoteTech or LightLag, see <see cref="DelayBackend"/>).
     ///
     /// Patched from <see cref="BridgeAddon"/>:
     ///   - LandAtPositionTargetPrefix → prefix on MechJebModuleLandingAutopilot.LandAtPositionTarget
@@ -61,7 +60,7 @@ namespace MechJebRTBridge
                 string token = Guid.NewGuid().ToString("N");
                 _pending[token] = new Pending { Instance = instance, Mode = mode };
 
-                if (API.QueueCommandToFlightComputer(BuildCommandNode(vessel.id, token, mode)))
+                if (BridgeCore.Queue(vessel.id, token, BuildCommandNode(vessel.id, token, mode)))
                 {
                     if (delay >= 0.1)
                         BridgeCore.Message($"Landing AP: {ModeLabel(mode)} queued · signal delay {delay:F1}s");
@@ -79,7 +78,7 @@ namespace MechJebRTBridge
             }
         }
 
-        // ---- RemoteTech callback -------------------------------------------
+        // ---- arrival callback (the delay mod calls it by reflection) -------
 
         public static bool RtPop(ConfigNode data)
         {

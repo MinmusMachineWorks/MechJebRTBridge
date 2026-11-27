@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using HarmonyLib;
 using MuMech;
-using RemoteTech.API;
 using UnityEngine;
 
 namespace MechJebRTBridge
@@ -27,7 +26,7 @@ namespace MechJebRTBridge
     /// step or inside stop methods that BridgeAddon wraps in Bypass.
     ///
     /// MechJeb 2.15.x windows re-issue Add/Remove from OnGUI every frame until Enabled changes, so
-    /// an identical command still in RemoteTech's queue is swallowed rather than queued again.
+    /// an identical command still in the delay queue is swallowed rather than queued again.
     ///
     /// Patched from <see cref="BridgeAddon"/>:
     ///   - AddPrefix    → prefix on UserPool.Add(object)
@@ -74,8 +73,8 @@ namespace MechJebRTBridge
 
         private static readonly Dictionary<string, Pending> _pending = new Dictionary<string, Pending>();
 
-        // (module, action) pairs with a command in the RT queue; see the 2.15.x OnGUI note above.
-        // A command RT drops without popping it (e.g. cancelled in the queue window) stops
+        // (module, action) pairs with a command in the delay queue; see the 2.15.x OnGUI note above.
+        // A command the delay mod drops without running it (e.g. cancelled in the queue window) stops
         // counting, so the next click goes out again.
         private static readonly InFlightSet<(ComputerModule, PoolAction)> _inFlight =
             new InFlightSet<(ComputerModule, PoolAction)>(token => _pending.Remove(token));
@@ -143,7 +142,7 @@ namespace MechJebRTBridge
                 string token = Guid.NewGuid().ToString("N");
                 _pending[token] = new Pending { Module = module, User = user, Action = action };
 
-                if (API.QueueCommandToFlightComputer(BuildCommandNode(vessel.id, token, module, user, action, label, verb)))
+                if (BridgeCore.Queue(vessel.id, token, BuildCommandNode(vessel.id, token, module, user, action, label, verb)))
                 {
                     _inFlight.Add(key, vessel.id, token);
                     if (delay >= 0.1)
@@ -162,7 +161,7 @@ namespace MechJebRTBridge
             }
         }
 
-        // ---- RemoteTech callback -------------------------------------------
+        // ---- arrival callback (the delay mod calls it by reflection) -------
 
         public static bool RtPop(ConfigNode data)
         {

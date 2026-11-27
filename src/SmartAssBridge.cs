@@ -1,13 +1,12 @@
 using System;
 using System.Collections.Generic;
 using MuMech;
-using RemoteTech.API;
 using UnityEngine;
 
 namespace MechJebRTBridge
 {
     /// <summary>
-    /// Route MechJeb's SmartASS attitude command through RemoteTech's signal-delay queue.
+    /// Route MechJeb's SmartASS attitude command through the signal-delay queue (RemoteTech or LightLag, see <see cref="DelayBackend"/>).
     ///
     /// Model: MechJeb is a computer *on board* the vessel. Pressing a SmartASS button is a
     /// *command* that must travel at light speed; the attitude-hold loop it starts runs
@@ -39,7 +38,7 @@ namespace MechJebRTBridge
         private static readonly Dictionary<MechJebModuleSmartASS, MechJebModuleSmartASS.Target> _committed =
             new Dictionary<MechJebModuleSmartASS, MechJebModuleSmartASS.Target>();
 
-        // Commands in the RT queue per SmartASS. A command RT drops without popping it (e.g.
+        // Commands in the delay queue per SmartASS. A command the delay mod drops without running it (e.g.
         // cancelled in the queue window) is forgotten here and in _pending.
         private static readonly InFlightSet<MechJebModuleSmartASS> _inFlight =
             new InFlightSet<MechJebModuleSmartASS>(token => _pending.Remove(token));
@@ -61,8 +60,8 @@ namespace MechJebRTBridge
         }
 
         // ---- sanctioned pilot (attitude hold through signal blackout) -------
-        // MechJeb's Drive output is wiped by RT's neutralize-on-lost-link. We capture it
-        // each frame and re-apply it as a sanctioned pilot (runs after RT's neutralize),
+        // RemoteTech wipes MechJeb's Drive output on a lost link. We capture it each frame and
+        // re-apply it as a sanctioned pilot (runs after RT's neutralize; DelayBackend.HoldAttitude),
         // so an attitude hold that has already been commanded keeps flying without a link.
         // Attitude only — throttle stays cut (no engine burns without a connection).
 
@@ -75,13 +74,7 @@ namespace MechJebRTBridge
             _capFrame    = Time.frameCount;
 
             Vessel v = FlightGlobals.ActiveVessel;
-            if (v == null) return;
-            try
-            {
-                if (!API.IsRemoteTechEnabled() || API.HasLocalControl(v.id)) return;
-                API.AddSanctionedPilot(v.id, SanctionedAttitude); // RT deduplicates
-            }
-            catch (Exception e) { Debug.LogError("[MJ-RT Bridge] AddSanctionedPilot failed: " + e); }
+            if (v != null) DelayBackend.Current?.HoldAttitude(v.id, SanctionedAttitude);
         }
 
         private static void SanctionedAttitude(FlightCtrlState s)
@@ -119,7 +112,7 @@ namespace MechJebRTBridge
                 string token = Guid.NewGuid().ToString("N");
                 _pending[token] = new Pending { Instance = instance, Target = requested, ResetPID = resetPID };
 
-                if (API.QueueCommandToFlightComputer(BuildCommandNode(vessel.id, token, requested, resetPID)))
+                if (BridgeCore.Queue(vessel.id, token, BuildCommandNode(vessel.id, token, requested, resetPID)))
                 {
                     _inFlight.Add(instance, vessel.id, token);
                     RevertHighlight(instance, committed);
@@ -130,7 +123,7 @@ namespace MechJebRTBridge
                     return false;
                 }
 
-                // RT refused (e.g. not the active vessel) — run locally rather than drop.
+                // The delay mod refused (e.g. not the active vessel) — run locally rather than drop.
                 _pending.Remove(token);
                 return true;
             }
@@ -141,11 +134,12 @@ namespace MechJebRTBridge
             }
         }
 
-        // ---- RemoteTech callback (invoked by reflection after the delay) ---
+        // ---- arrival callback (invoked by reflection after the delay) -------
 
         /// <summary>
-        /// Called by RemoteTech once the signal delay has elapsed. Must be public static and
-        /// match the signature RemoteTech expects: (ConfigNode) → bool (false = one-shot).
+        /// Called by the delay mod once the signal delay has elapsed. Must be public static and
+        /// match the signature RemoteTech expects: (ConfigNode) → bool (false = one-shot); LightLag
+        /// ignores the result.
         /// </summary>
         public static bool RtPop(ConfigNode data)
         {
