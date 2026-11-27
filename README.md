@@ -174,6 +174,7 @@ repository. With neither installed, the bridge loads and delays nothing.
 - **Signal loss differs between the two.** RemoteTech wipes the controls without a link; the
   bridge then keeps SmartASS's attitude hold flying (a sanctioned pilot) but not the throttle.
   LightLag doesn't touch an autopilot's output, so a running MechJeb program keeps full control,
-  throttle included, as an on-board computer would. Not yet checked in game with LightLag.
-- **LightLag support isn't checked in game yet.** The test harness drives either mod; with
-  LightLag it skips the no-connection test (LightLag has no blackout switch).
+  throttle included, as an on-board computer would. Not yet checked in game.
+- **LightLag support** passes the test harness in game (2026-11-26, MechJeb 2.15.4: 21 passed,
+  the no-connection test skipped, since LightLag has no blackout switch). Real flight with it,
+  and its signal-loss behaviour (below), aren't checked yet.
