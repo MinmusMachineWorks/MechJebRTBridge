@@ -22,16 +22,13 @@
   </ItemGroup>
 
   <!-- No reference to MechJebRTBridge itself: the tests are black-box. They drive MechJeb the
-       way a click (or an autopilot) would, and observe RemoteTech's queue, MechJeb's module
-       state, and the bridge's [MJ-RT Bridge] log lines. -->
+       way a click (or an autopilot) would, and observe the delay mod's queue, MechJeb's module
+       state, and the bridge's [MJ-RT Bridge] log lines. The delay mod (RemoteTech or LightLag)
+       isn't referenced either: DelayMod.cs reaches whichever is installed by reflection. -->
   <ItemGroup>
     <ModReference Include="MechJeb2">
       <DLLPath>GameData/MechJeb2/Plugins/MechJeb2.dll</DLLPath>
       <CKANIdentifier>MechJeb2</CKANIdentifier>
-    </ModReference>
-    <ModReference Include="RemoteTech">
-      <DLLPath>GameData/RemoteTech/Plugins/RemoteTech.dll</DLLPath>
-      <CKANIdentifier>RemoteTech</CKANIdentifier>
     </ModReference>
     <ModReference Include="0Harmony">
       <DLLPath>GameData/000_Harmony/0Harmony.dll</DLLPath>

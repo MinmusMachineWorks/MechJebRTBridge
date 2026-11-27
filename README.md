@@ -90,8 +90,7 @@ cut without a connection.
 ## Building
 
 Requires a local KSP install with **MechJeb2 and Harmony (`000_Harmony`) installed in
-`GameData`**. RemoteTech and LightLag aren't build references (the harness still needs RemoteTech,
-see *Testing*). These provide the reference assemblies, resolved through
+`GameData`**. RemoteTech and LightLag aren't build references, for the mod or the test harness. These provide the reference assemblies, resolved through
 [KSPBuildTools](https://github.com/KSPModdingLibs/KSPBuildTools) `ModReference` items. You also
 need `dotnet` (or Mono's `msbuild`).
 
@@ -176,4 +175,5 @@ repository. With neither installed, the bridge loads and delays nothing.
   bridge then keeps SmartASS's attitude hold flying (a sanctioned pilot) but not the throttle.
   LightLag doesn't touch an autopilot's output, so a running MechJeb program keeps full control,
   throttle included, as an on-board computer would. Not yet checked in game with LightLag.
-- **LightLag support isn't checked in game yet,** and the test harness covers RemoteTech only.
+- **LightLag support isn't checked in game yet.** The test harness drives either mod; with
+  LightLag it skips the no-connection test (LightLag has no blackout switch).

@@ -16,12 +16,14 @@ It uses the same `Directory.Build.props.user` as the mod. The DLL goes to
 `KSPBT_GameRoot` is set, it's also copied to `<KSP>/GameData/MechJebRTBridge.Tests/Plugins/`.
 Delete that folder from the install to remove the harness.
 
-**RemoteTech only.** The harness drives RemoteTech's queue, extra delay and radio blackout, so it
-runs with RemoteTech installed. The bridge's LightLag backend isn't covered by it yet.
+**RemoteTech or LightLag.** The harness drives whichever delay mod is installed
+(`DelayMod.cs`, by reflection, so it builds without either): its queue, its manual extra delay
+and its cancel. Radio blackout is RemoteTech's, so with LightLag the no-connection test is
+skipped.
 
-The harness doesn't reference the bridge. It only uses what the player and RemoteTech can see:
+The harness doesn't reference the bridge. It only uses what the player and the delay mod can see:
 - it calls MechJeb's methods the way a button click or an autopilot would
-- it reads RemoteTech's flight-computer queue and MechJeb's module state
+- it reads the delay mod's queue (RemoteTech's flight computer, LightLag's `LightLagVessel`) and MechJeb's module state
 - it matches the bridge's `[MJ-RT Bridge]` log lines
 
 Rebuild the mod too when you change it. The harness tests whichever bridge DLL is installed.
@@ -31,7 +33,7 @@ Rebuild the mod too when you change it. The harness tests whichever bridge DLL i
 Make a save with a vessel that meets all of these:
 - **an uncrewed probe** with MechJeb, an antenna and power. A crewed vessel has local control,
   and the bridge never delays it.
-- **in a stable orbit near Kerbin**, with a working RemoteTech link to KSC **for the whole
+- **in a stable orbit near Kerbin**, with a working link to KSC (RemoteTech, or CommNet with LightLag) **for the whole
   run** (about 2–3 minutes). The real signal delay must be under 3 s, which any Kerbin orbit
   gives. Either:
   - **LKO** (80–100 km) with an activated omni antenna (Communotron 16). Start the run just
@@ -63,15 +65,16 @@ Results show in the window and go to `KSP.log`:
 `grep "MJ-RT" KSP.log` shows the test results alongside the bridge's own lines.
 
 During a run the harness:
-- **adds a 3 s manual delay** to the RemoteTech flight computer (the "Delay (+ signal)" field
-  in RT's queue window). LKO's real delay is milliseconds, too short to tell a delayed command
+- **adds a 3 s manual delay**: RemoteTech's flight computer "Delay (+ signal)" field, or
+  LightLag's extra delay for the vessel. LKO's real delay is milliseconds, too short to tell a delayed command
   from an instant one. The original value is restored at the end, or if you leave the scene.
 - **stubs out the per-frame work** (`Drive`, `OnFixedUpdate`, `OnUpdate`) of the Node Executor,
   the Landing, Rendezvous, Docking and Ascent autopilots, and the staging and thrust controllers
   (so autostage can't fire a stage). An engaged autopilot then stays engaged
   without a target, and never burns, warps or disengages itself. Engage/disengage code runs for
   real.
-- **turns on RemoteTech radio blackout** for the no-connection test, and lifts it afterwards.
+- **turns on RemoteTech radio blackout** for the no-connection test, and lifts it afterwards
+  (skipped with LightLag, which has no blackout switch).
 - **stops everything after each test** with on-board (physics-step) calls: SmartASS OFF, Abort,
   Stop Landing, Rendezvous and Docking off. It first waits for queued bridge commands to arrive.
 
@@ -80,7 +83,7 @@ During a run the harness:
 | Test | Checks |
 |---|---|
 | Every patch target is patched | Each method `BridgeAddon` patches is patched by `com.mechjebrtbridge`. Version-specific stop paths that don't exist in the loaded MechJeb are listed, not failed. |
-| SmartASS: click is delayed | One SCHED, one RT queue entry. The button shows the old mode until arrival. It arrives after ≈3 s and engages. |
+| SmartASS: click is delayed | One SCHED, one entry in the delay queue. The button shows the old mode until arrival. It arrives after ≈3 s and engages. |
 | SmartASS: on-board call is instant | `Engage` from the physics step applies at once, logs `internal call`, and queues nothing. |
 | SmartASS: highlight tracks with the window closed | With the SmartASS window closed, an on-board mode change is still tracked, so a click (e.g. a part action) reverts the highlight to the mode SmartASS holds (`docs/MECHJEB_COVERAGE.md` §5.5). The window is reopened afterwards if it was open. |
 | No connection: click is refused | Under blackout, a SmartASS click is refused and nothing is queued. 30 frames of Rendezvous engage give one refusal message (2.15.x throttle). |
@@ -92,7 +95,7 @@ During a run the harness:
 | Docking AP: EndDocking / closing the window | The Bypass-wrapped stop paths act at once, from outside the physics step. |
 | Ascent AP: engage / disengage | Engage via `Users.Add(menu)`, disengage via `Remove` (2.15.x) and `Clear` (dev): each is delayed ≈3 s. The Ascent window may be open. |
 | Ascent AP: on-board stop / toggle action | A physics-step `Clear` acts at once. The "Ascent AP toggle" part action, clicked outside the physics step, is delayed both ways. |
-| RT cancel: Rendezvous / SmartASS | After a queued command is cancelled with RT's "x" (a `CancelCommand`), the Rendezvous engage button works again, and SmartASS goes back to tracking the mode it holds (`docs/MECHJEB_COVERAGE.md` §5.4). |
+| cancel: Rendezvous / SmartASS | After a queued command is cancelled (RemoteTech's "x", a `CancelCommand`; LightLag's Abort), the Rendezvous engage button works again, and SmartASS goes back to tracking the mode it holds (`docs/MECHJEB_COVERAGE.md` §5.4). |
 
 ## Not covered (still manual)
 

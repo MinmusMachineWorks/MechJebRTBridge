@@ -5,7 +5,6 @@ using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using MuMech;
-using RemoteTech.FlightComputer.Commands;
 using static MechJebRTBridge.Tests.Ctx;
 using Target = MuMech.MechJebModuleSmartASS.Target;
 
@@ -51,8 +50,8 @@ namespace MechJebRTBridge.Tests
             new TestCase("Ascent AP: disengage (Remove, Clear) is delayed", AscentDisengageDelayed),
             new TestCase("Ascent AP: on-board stop is instant",     AscentInternalStopInstant),
             new TestCase("Ascent AP: toggle part action is delayed", AscentToggleActionDelayed),
-            new TestCase("RT cancel: Rendezvous engage can be re-sent", RtCancelThenResend),
-            new TestCase("RT cancel: SmartASS highlight keeps tracking", RtCancelSmartAssTracking),
+            new TestCase("cancel: Rendezvous engage can be re-sent", CancelThenResend),
+            new TestCase("cancel: SmartASS highlight keeps tracking", CancelSmartAssTracking),
         };
 
         // ---- patches -----------------------------------------------------------
@@ -72,7 +71,7 @@ namespace MechJebRTBridge.Tests
             ("MuMech.MechJebModuleLandingAutopilot:LandUntargeted", false),
             ("MuMech.MechJebModuleTranslatron:PanicSwitch", false),
             ("MuMech.MechJebModuleSmartASS:OnLoad", false),
-            ("RemoteTech.FlightComputer.Commands.ActionGroupCommand:Pop", false),
+            ("RemoteTech.FlightComputer.Commands.ActionGroupCommand:Pop", true), // only with RemoteTech
             ("MuMech.UserPool:Add", false),
             ("MuMech.UserPool:Remove", false),
             ("MuMech.UserPool:Clear", false),
@@ -134,7 +133,7 @@ namespace MechJebRTBridge.Tests
             sass.Engage();
 
             c.CheckLog("SCHED PROGRADE ", mark, 1, "click");
-            Check(c.QueuedCount == 1, $"expected 1 bridge command in the RT queue, got {c.QueuedCount}");
+            Check(c.QueuedCount == 1, $"expected 1 bridge command in the delay queue, got {c.QueuedCount}");
             Check(sass.target == Target.OFF, $"SmartASS shows {sass.target} before the command arrived; should still show OFF");
 
             yield return PhysicsTicks(10);
@@ -155,7 +154,7 @@ namespace MechJebRTBridge.Tests
             Check(sass.target == Target.RETROGRADE, $"SmartASS is {sass.target} right after an on-board Engage(RETROGRADE)");
             c.CheckLog("SCHED", mark, 0, "on-board call");
             c.CheckLogAtLeast("SmartASS Engage: internal call (physics step)", mark, 1, "on-board call");
-            Check(c.QueuedCount == 0, "on-board call put a command in the RT queue");
+            Check(c.QueuedCount == 0, "on-board call put a command in the delay queue");
         }
 
         // The bridge tracks the mode SmartASS holds every physics step, so a click can revert the
@@ -222,7 +221,7 @@ namespace MechJebRTBridge.Tests
             c.Core.Node.ExecuteOneNode(c);
 
             c.CheckLog("SCHED NodeExecutor ONE_NODE", mark, 1, "click");
-            Check(c.QueuedCount == 1, $"expected 1 bridge command in the RT queue, got {c.QueuedCount}");
+            Check(c.QueuedCount == 1, $"expected 1 bridge command in the delay queue, got {c.QueuedCount}");
             Check(!c.Core.Node.Enabled, "node executor started before the command arrived");
 
             yield return WaitUntil(() => c.Count("NodeExecutor EXEC ONE_NODE", mark) > 0, "NodeExecutor EXEC");
@@ -250,7 +249,7 @@ namespace MechJebRTBridge.Tests
             c.Core.Landing.LandUntargeted(c);
 
             c.CheckLog("SCHED Landing UNTARGETED", mark, 1, "click");
-            Check(c.QueuedCount == 1, $"expected 1 bridge command in the RT queue, got {c.QueuedCount}");
+            Check(c.QueuedCount == 1, $"expected 1 bridge command in the delay queue, got {c.QueuedCount}");
             Check(!c.Core.Landing.Enabled, "landing autopilot started before the command arrived");
 
             yield return WaitUntil(() => c.Count("Landing EXEC UNTARGETED", mark) > 0, "Landing EXEC");
@@ -285,7 +284,7 @@ namespace MechJebRTBridge.Tests
             yield return ClickEveryFrame(() => ap.Enabled, () => ap.Users.Add(w));
 
             c.CheckLog("SCHED Rendezvous AP engage", mark, 1, "30 frames of engage clicks");
-            Check(c.QueuedCount == 1, $"expected 1 bridge command in the RT queue, got {c.QueuedCount}");
+            Check(c.QueuedCount == 1, $"expected 1 bridge command in the delay queue, got {c.QueuedCount}");
             Check(!ap.Enabled, "Rendezvous AP engaged before the command arrived");
 
             yield return WaitUntil(() => ap.Enabled, "Rendezvous AP to engage");
@@ -342,7 +341,7 @@ namespace MechJebRTBridge.Tests
 
             Check(!ap.Enabled, "on-board Clear didn't disengage the Rendezvous AP at once");
             c.CheckLog("SCHED", mark, 0, "on-board stop");
-            Check(c.QueuedCount == 0, "on-board stop put a command in the RT queue");
+            Check(c.QueuedCount == 0, "on-board stop put a command in the delay queue");
         }
 
         private static IEnumerator RendezvousNonWindowInstant(Ctx c)
@@ -430,7 +429,7 @@ namespace MechJebRTBridge.Tests
             ap.Users.Add(w); // the Engage button
 
             c.CheckLog("SCHED Ascent AP engage", mark, 1, "click");
-            Check(c.QueuedCount == 1, $"expected 1 bridge command in the RT queue, got {c.QueuedCount}");
+            Check(c.QueuedCount == 1, $"expected 1 bridge command in the delay queue, got {c.QueuedCount}");
             Check(!ap.Enabled, "Ascent AP engaged before the command arrived");
 
             yield return WaitUntil(() => ap.Enabled, "Ascent AP to engage");
@@ -476,7 +475,7 @@ namespace MechJebRTBridge.Tests
 
             Check(!ap.Enabled, "on-board Clear didn't disengage the Ascent AP at once");
             c.CheckLog("SCHED", mark, 0, "on-board stop");
-            Check(c.QueuedCount == 0, "on-board stop put a command in the RT queue");
+            Check(c.QueuedCount == 0, "on-board stop put a command in the delay queue");
         }
 
         // MechJebCore's "Ascent AP toggle" part action, clicked in the PAW (outside the physics
@@ -505,12 +504,13 @@ namespace MechJebRTBridge.Tests
             CheckDelayed(sent, "Ascent toggle (disengage)");
         }
 
-        // ---- RemoteTech cancel -------------------------------------------------
+        // ---- cancel ----------------------------------------------------------
 
-        // The RT queue window's "x" sends a CancelCommand, which (unlike the command it cancels)
-        // ignores the manual extra delay, so it arrives first and removes the bridge's command
+        // The delay mod's own cancel: RemoteTech's queue window "x" (a CancelCommand, which ignores
+        // the manual extra delay), or LightLag's Abort (a cancel that arrives after the signal
+        // delay, before the command runs). Either way it overtakes the command and removes it
         // without calling the bridge. The bridge must notice the command is gone.
-        private static IEnumerator CancelQueued(Ctx c, ExternalAPICommand cmd)
+        private static IEnumerator CancelQueued(Ctx c, object cmd)
         {
             c.SetCommandDelay(TestDelay);
             // RT's queue is sorted by TimeStamp and silently drops a command whose TimeStamp
@@ -518,20 +518,19 @@ namespace MechJebRTBridge.Tests
             // time) as the command.
             yield return PhysicsTicks(3);
             int mark = c.Mark();
-            c.Fc.Enqueue(CancelCommand.WithCommand(cmd));
-            Check(c.Fc.QueuedCommands.Any(q => q is CancelCommand), "RT didn't accept the CancelCommand");
-            yield return WaitUntil(() => c.QueuedCount == 0, "RT to cancel the command", TestDelay * 2 + 10);
+            Check(c.Mod.Cancel(c.Vessel, cmd), $"{c.Mod.Name} didn't accept the cancel");
+            yield return WaitUntil(() => c.QueuedCount == 0, $"{c.Mod.Name} to cancel the command", TestDelay * 2 + 10);
             c.CheckLog("EXEC ", mark, 0, "the cancelled command must not arrive");
         }
 
-        private static ExternalAPICommand SingleQueued(Ctx c)
+        private static object SingleQueued(Ctx c)
         {
-            List<ExternalAPICommand> q = c.Queued();
-            Check(q.Count == 1, $"expected 1 bridge command in the RT queue, got {q.Count}");
+            List<object> q = c.Queued();
+            Check(q.Count == 1, $"expected 1 bridge command in the {c.Mod.Name} queue, got {q.Count}");
             return q[0];
         }
 
-        private static IEnumerator RtCancelThenResend(Ctx c)
+        private static IEnumerator CancelThenResend(Ctx c)
         {
             var ap = c.Module<MechJebModuleRendezvousAutopilot>();
             var w  = c.Window(RdvWindow, "Rendezvous Autopilot");
@@ -543,15 +542,15 @@ namespace MechJebRTBridge.Tests
 
             int mark = c.Mark();
             ap.Users.Add(w);
-            c.CheckLog("SCHED Rendezvous AP engage", mark, 1, "engage after an RT-cancelled engage");
-            c.CheckLog("no longer in the RT queue", mark, 1, "engage after an RT-cancelled engage");
+            c.CheckLog("SCHED Rendezvous AP engage", mark, 1, "engage after a cancelled engage");
+            c.CheckLog("queue (cancelled or dropped)", mark, 1, "engage after a cancelled engage");
             yield return WaitUntil(() => ap.Enabled, "Rendezvous AP to engage");
         }
 
         // After a cancelled SmartASS command, the bridge must go back to tracking the mode SmartASS
         // actually holds. Observable through the highlight revert on the next click: it reverts
         // to the tracked mode.
-        private static IEnumerator RtCancelSmartAssTracking(Ctx c)
+        private static IEnumerator CancelSmartAssTracking(Ctx c)
         {
             var sass = c.Module<MechJebModuleSmartASS>();
             yield return PhysicsTicks(2);

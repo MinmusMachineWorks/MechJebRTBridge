@@ -4,11 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using HarmonyLib;
 using MuMech;
-using RemoteTech;
-using RemoteTech.API;
-using RemoteTech.FlightComputer.Commands;
 using UnityEngine;
-using FlightComputer = RemoteTech.FlightComputer.FlightComputer;
 
 namespace MechJebRTBridge.Tests
 {
@@ -16,9 +12,10 @@ namespace MechJebRTBridge.Tests
     /// Shared fixture and helpers for one test run on the active vessel.
     ///
     /// Delay: the vessel's real signal delay is usually milliseconds (LKO), too short to tell a
-    /// delayed command from an instant one. Setup raises the RemoteTech flight computer's
-    /// manual extra delay (the "Delay (+ signal)" field in the RT queue window) so every queued
-    /// command takes about <see cref="TestDelay"/> seconds. Teardown restores it.
+    /// delayed command from an instant one. Setup raises the delay mod's manual extra delay
+    /// (RemoteTech's "Delay (+ signal)" field, LightLag's flight computer extra delay) so every
+    /// queued command takes about <see cref="TestDelay"/> seconds. Teardown restores it. The
+    /// delay mod is RemoteTech or LightLag (<see cref="DelayMod"/>).
     /// </summary>
     internal sealed class Ctx
     {
@@ -26,7 +23,7 @@ namespace MechJebRTBridge.Tests
 
         internal Vessel Vessel;
         internal MechJebCore Core;
-        internal FlightComputer Fc;
+        internal DelayMod Mod;
         internal string Note; // optional detail shown next to a passing test
 
         private double _savedTotalDelay;
@@ -114,43 +111,32 @@ namespace MechJebRTBridge.Tests
             Check(took >= TestDelay - 0.5, $"{what} arrived after {took:F2}s; expected ≈{TestDelay:F0}s (signal delay)");
         }
 
-        // ---- RemoteTech ----------------------------------------------------
+        // ---- the delay mod ------------------------------------------------
 
-        private static readonly AccessTools.FieldRef<ExternalAPICommand, string> ReflectionType =
-            AccessTools.FieldRefAccess<ExternalAPICommand, string>("ReflectionType");
-
-        /// <summary>Bridge commands currently in the RT queue.</summary>
-        internal List<ExternalAPICommand> Queued() =>
-            Fc.QueuedCommands.OfType<ExternalAPICommand>()
-              .Where(c => (ReflectionType(c) ?? "").Contains("MechJebRTBridge"))
-              .ToList();
+        /// <summary>Bridge commands currently in the delay mod's queue.</summary>
+        internal List<object> Queued() => Mod.Queued(Vessel);
 
         internal int QueuedCount => Queued().Count;
-
-        internal static bool Connected(Vessel v)
-        {
-            double d = API.GetShortestSignalDelay(v.id);
-            return !double.IsNaN(d) && !double.IsInfinity(d) && d >= 0 && d < 1e6;
-        }
 
         /// <summary>Sets the manual extra delay so new commands take <paramref name="seconds"/>.</summary>
         internal void SetCommandDelay(double seconds)
         {
-            if (!_delayChanged) { _savedTotalDelay = Fc.TotalDelay; _delayChanged = true; }
-            Fc.TotalDelay = Math.Max(Fc.Delay, 0) + seconds;
+            if (!_delayChanged) { _savedTotalDelay = Mod.ExtraDelaySetting(Vessel); _delayChanged = true; }
+            Mod.SetExtraDelaySetting(Vessel, Mod.ExtraDelayFor(Vessel, seconds));
         }
 
         internal IEnumerator SetBlackout(bool on)
         {
-            API.SetRadioBlackoutGuid(Vessel.id, on, "MechJebRTBridge tests");
+            if (Mod.NoBlackout != null) Skip(Mod.NoBlackout);
+            Mod.SetBlackout(Vessel, on);
             _blackout = on;
-            // RemoteTech recomputes the network periodically, not instantly.
+            // The delay mod recomputes the network periodically, not instantly.
             float end = Time.unscaledTime + 15f;
-            while (Connected(Vessel) == on)
+            while (Mod.Connected(Vessel) == on)
             {
                 if (Time.unscaledTime > end)
                 {
-                    if (on) Skip("RemoteTech didn't drop the link under radio blackout within 15s");
+                    if (on) Skip($"{Mod.Name} didn't drop the link under radio blackout within 15s");
                     throw new TestFailure("link didn't come back within 15s after lifting radio blackout");
                 }
                 yield return null;
@@ -211,21 +197,19 @@ namespace MechJebRTBridge.Tests
 
         internal IEnumerator Setup()
         {
-            Check(API.IsRemoteTechEnabled(), "RemoteTech is disabled (RemoteTech settings → enable)");
+            Mod = DelayMod.Find();
+            Check(Mod != null, "neither RemoteTech nor LightLag is installed");
             Vessel = FlightGlobals.ActiveVessel;
             Check(Vessel != null, "no active vessel");
             Check(Vessel.situation == Vessel.Situations.ORBITING,
                   $"put the test probe in a stable orbit (situation is {Vessel.situation})");
             Core = Vessel.GetMasterMechJeb();
             Check(Core != null, "active vessel has no MechJeb");
-            Check(!API.HasLocalControl(Vessel.id),
-                  "active vessel has local control (crew or a command station): the bridge never delays it. Use an uncrewed probe");
-            Check(Connected(Vessel), "active vessel has no RemoteTech connection");
-            Fc = RTCore.Instance?.Satellites[Vessel.id]?.FlightComputer;
-            Check(Fc != null, "no RemoteTech flight computer on the active vessel");
+            string notReady = Mod.NotReady(Vessel);
+            Check(notReady == null, notReady);
             Check(TimeWarp.CurrentRate <= 1f, "stop time warp first");
-            Check(QueuedCount == 0, "bridge commands are already in the RT queue; let them finish first");
-            Check(API.GetShortestSignalDelay(Vessel.id) < TestDelay,
+            Check(QueuedCount == 0, $"bridge commands are already in the {Mod.Name} queue; let them finish first");
+            Check(Mod.Delay(Vessel) < TestDelay,
                   $"signal delay is already ≥ {TestDelay}s; the tests assume a short real delay. Use a probe near Kerbin");
 
             SetCommandDelay(TestDelay);
@@ -246,12 +230,12 @@ namespace MechJebRTBridge.Tests
             AutopilotStubs.Active = false;
             if (_blackout && Vessel != null)
             {
-                API.SetRadioBlackoutGuid(Vessel.id, false, "MechJebRTBridge tests");
+                Mod.SetBlackout(Vessel, false);
                 _blackout = false;
             }
-            if (_delayChanged && Fc != null)
+            if (_delayChanged && Mod != null && Vessel != null)
             {
-                Fc.TotalDelay = _savedTotalDelay;
+                Mod.SetExtraDelaySetting(Vessel, _savedTotalDelay);
                 _delayChanged = false;
             }
         }
@@ -266,10 +250,10 @@ namespace MechJebRTBridge.Tests
             // Let in-flight commands arrive, so the next test starts from a settled state.
             float end = Time.unscaledTime + (float)(TestDelay * 2 + 10);
             while (QueuedCount > 0 && Time.unscaledTime < end) yield return null;
-            foreach (ExternalAPICommand c in Queued())
+            foreach (object c in Queued())
             {
-                Debug.LogWarning("[MJ-RT Test] cleanup: removing a stuck bridge command from the RT queue: " + c.ShortName);
-                Fc.Remove(c);
+                Debug.LogWarning($"[MJ-RT Test] cleanup: removing a stuck bridge command from the {Mod.Name} queue: " + Mod.Label(c));
+                Mod.Remove(Vessel, c);
             }
 
             yield return StopEverything();
